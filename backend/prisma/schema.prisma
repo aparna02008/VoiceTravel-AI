@@ -1,0 +1,204 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model for authentication and profile
+model User {
+  id                    String      @id @default(cuid())
+  phoneNumber           String      @unique
+  email                 String?     @unique
+  name                  String?
+  preferredLanguage     String      @default("en")
+  dateOfBirth           DateTime?
+  gender                String?
+  profilePicture        String?
+  
+  // Authentication
+  otpHash               String?
+  otpExpiry             DateTime?
+  verificationToken     String?
+  verificationTokenExp  DateTime?
+  
+  // Relations
+  bookings              Booking[]
+  payments              Payment[]
+  conversations         Conversation[]
+  voiceRecordings       VoiceRecording[]
+  searches              TravelSearch[]
+  notifications         Notification[]
+  
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  
+  @@index([phoneNumber])
+  @@index([email])
+}
+
+// Booking model for train, flight, and bus bookings
+model Booking {
+  id                    String      @id @default(cuid())
+  userId                String
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  bookingType           String      // "train", "flight", "bus"
+  status                String      @default("pending") // "pending", "confirmed", "cancelled", "completed"
+  pnr                   String?     @unique
+  
+  // Journey details
+  fromLocation          String
+  toLocation            String
+  travelDate            DateTime
+  returnDate            DateTime?
+  passengers            Int         @default(1)
+  
+  // Type-specific data (JSON for flexibility)
+  bookingDetails        Json
+  
+  // Pricing
+  totalPrice            Float
+  currency              String      @default("INR")
+  
+  // Relations
+  payment               Payment?
+  
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  
+  @@index([userId])
+  @@index([pnr])
+  @@index([status])
+}
+
+// Payment model
+model Payment {
+  id                    String      @id @default(cuid())
+  bookingId             String      @unique
+  booking               Booking     @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  
+  userId                String
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  method                String      // "upi", "credit_card", "debit_card"
+  status                String      @default("pending") // "pending", "completed", "failed"
+  amount                Float
+  currency              String      @default("INR")
+  
+  // Transaction details
+  transactionId         String?     @unique
+  gatewayResponse       Json?
+  
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  
+  @@index([userId])
+  @@index([bookingId])
+  @@index([status])
+}
+
+// Conversation model for tracking voice interactions
+model Conversation {
+  id                    String      @id @default(cuid())
+  userId                String
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  language              String
+  intent                String      // "booking", "pnr_inquiry", "cancellation", etc.
+  status                String      @default("active") // "active", "completed", "abandoned"
+  
+  // Context
+  context               Json?
+  messages              ConversationMessage[]
+  voiceRecordings       VoiceRecording[]
+  
+  startedAt             DateTime    @default(now())
+  completedAt           DateTime?
+  
+  @@index([userId])
+  @@index([status])
+}
+
+// Individual messages in a conversation
+model ConversationMessage {
+  id                    String      @id @default(cuid())
+  conversationId        String
+  conversation          Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  role                  String      // "user", "assistant"
+  content               String
+  
+  createdAt             DateTime    @default(now())
+  
+  @@index([conversationId])
+}
+
+// Voice recording model
+model VoiceRecording {
+  id                    String      @id @default(cuid())
+  userId                String
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  conversationId        String
+  conversation          Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  audioUrl              String
+  duration              Int         // in seconds
+  language              String
+  
+  // Transcription
+  transcription         String?
+  transcriptionConfidence Float?
+  
+  createdAt             DateTime    @default(now())
+  
+  @@index([userId])
+  @@index([conversationId])
+}
+
+// Travel search history
+model TravelSearch {
+  id                    String      @id @default(cuid())
+  userId                String
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  searchType            String      // "train", "flight", "bus"
+  fromLocation          String
+  toLocation            String
+  travelDate            DateTime
+  passengers            Int         @default(1)
+  
+  // Search results
+  resultsCount          Int
+  selectedOption        Json?
+  
+  createdAt             DateTime    @default(now())
+  
+  @@index([userId])
+  @@index([searchType])
+}
+
+// Notifications
+model Notification {
+  id                    String      @id @default(cuid())
+  userId                String
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type                  String      // "booking_confirmed", "payment_failed", "pnr_update", etc.
+  title                 String
+  message               String
+  
+  read                  Boolean     @default(false)
+  readAt                DateTime?
+  
+  createdAt             DateTime    @default(now())
+  
+  @@index([userId])
+  @@index([read])
+}
